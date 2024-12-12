@@ -11,7 +11,6 @@ import {
     NavigationMenuLink,
     NavigationMenuList,
     NavigationMenuTrigger,
-    navigationMenuTriggerStyle,
 } from "@/components/ui/navigation-menu"
 import { DropdownProps, DropdownSection } from "@/types/dropdown.types"
 import { motion, AnimatePresence } from "framer-motion"
