@@ -3,7 +3,6 @@ import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuTrigger,
-    DropdownMenuItem,
 } from "@/components/ui/dropdown-menu"
 import {
     Select,
@@ -31,7 +30,7 @@ const defaultOperators = [
     { label: 'Not Contains', value: 'notContains' }
 ] as const;
 
-export function TableFilter({ config, columns, onFilterChange }: TableFilterProps) {
+export function TableFilter({ columns, onFilterChange }: TableFilterProps) {
     const [filters, setFilters] = useState<FilterValue[]>([])
     const [isOpen, setIsOpen] = useState(false)
 
@@ -51,7 +50,7 @@ export function TableFilter({ config, columns, onFilterChange }: TableFilterProp
     }
 
     const updateFilter = (index: number, field: keyof FilterValue, value: string) => {
-        const newFilters = filters.map((filter, i) => 
+        const newFilters = filters.map((filter, i) =>
             i === index ? { ...filter, [field]: value } : filter
         )
         setFilters(newFilters)
@@ -60,8 +59,8 @@ export function TableFilter({ config, columns, onFilterChange }: TableFilterProp
 
     const renderValueInput = (filter: FilterValue, index: number) => {
         const selectedColumn = columns.find(col => col.accessorKey === filter.column)
-        
-        if (selectedColumn && filterOptions[selectedColumn.type]) {
+
+        if (selectedColumn && filterOptions[selectedColumn.type as keyof typeof filterOptions]) {
             return (
                 <Select
                     value={filter.value}
@@ -71,9 +70,9 @@ export function TableFilter({ config, columns, onFilterChange }: TableFilterProp
                         <SelectValue placeholder="Select value" />
                     </SelectTrigger>
                     <SelectContent>
-                        {filterOptions[selectedColumn.type].map((option) => (
-                            <SelectItem key={option} value={option}>
-                                {option}
+                        {filterOptions[selectedColumn.type as keyof typeof filterOptions]?.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                                {option.label}
                             </SelectItem>
                         ))}
                     </SelectContent>

@@ -3,7 +3,6 @@ import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuTrigger,
-    DropdownMenuItem,
     DropdownMenuCheckboxItem,
 } from "@/components/ui/dropdown-menu"
 import { Columns } from "lucide-react"

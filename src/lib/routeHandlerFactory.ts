@@ -526,13 +526,8 @@ export function createRouteHandlers({ model, permissions = [], searchableFields 
                     }, { status: 400 })
                 }
 
-                const filters = searchParams.get('filters') ? JSON.parse(searchParams.get('filters')!) : []
-                const search = searchParams.get('search')
 
-                let query = {}
-                // Add filter and search logic if needed
-
-                const items = await model.find(query)
+                const items = await model.find({})
 
                 if (items.length === 0) {
                     return NextResponse.json({
