@@ -31,8 +31,7 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <ReusableDropDown className="fixed top-0 right-0 z-50" config={dropdownConfig} />
-
+        <ReusableDropDown config={dropdownConfig} />
         {children}
         <Toaster />
       </body>

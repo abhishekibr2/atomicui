@@ -109,13 +109,13 @@ export function TableAdd({ config, onSuccess }: TableAddProps) {
         const initialArrayFields: Record<string, ArrayFieldValue[]> = {};
         config.columns.forEach((column) => {
             if (column.type === 'array' && column.arrayType === 'items') {
-                initialArrayFields[column.accessorKey] = [{ 
-                    id: crypto.randomUUID(), 
+                initialArrayFields[column.accessorKey] = [{
+                    id: crypto.randomUUID(),
                     value: {
                         description: '',
                         quantity: '',
                         price: ''
-                    } 
+                    }
                 }];
             }
         });
@@ -128,13 +128,13 @@ export function TableAdd({ config, onSuccess }: TableAddProps) {
             ...prev,
             [accessorKey]: [
                 ...(prev[accessorKey] || []),
-                { 
-                    id: crypto.randomUUID(), 
+                {
+                    id: crypto.randomUUID(),
                     value: {
                         description: '',
                         quantity: '',
                         price: ''
-                    } 
+                    }
                 }
             ]
         }));
@@ -150,14 +150,14 @@ export function TableAdd({ config, onSuccess }: TableAddProps) {
     const handleArrayFieldChange = (accessorKey: string, id: string, fieldKey: string, value: any) => {
         setArrayFields(prev => ({
             ...prev,
-            [accessorKey]: prev[accessorKey].map(field => 
-                field.id === id 
-                    ? { 
-                        ...field, 
-                        value: { 
-                            ...field.value, 
+            [accessorKey]: prev[accessorKey].map(field =>
+                field.id === id
+                    ? {
+                        ...field,
+                        value: {
+                            ...field.value,
                             [fieldKey]: value || ''
-                        } 
+                        }
                     }
                     : field
             )
@@ -216,7 +216,7 @@ export function TableAdd({ config, onSuccess }: TableAddProps) {
     const resetFormData = () => {
         const initialData: FormDataType = {};
         const initialArrayFields: Record<string, ArrayFieldValue[]> = {};
-        
+
         config.columns.forEach((column) => {
             if (column.type === 'array' && column.arrayType === 'items') {
                 initialArrayFields[column.accessorKey] = [{
@@ -262,7 +262,7 @@ export function TableAdd({ config, onSuccess }: TableAddProps) {
                 }
             }
         });
-        
+
         setFormData(initialData);
         setArrayFields(initialArrayFields);
     };
@@ -318,7 +318,7 @@ export function TableAdd({ config, onSuccess }: TableAddProps) {
                         {column.header}
                     </Label>
                     <div className="space-y-2">
-                        {arrayFields[column.accessorKey]?.map(field => 
+                        {arrayFields[column.accessorKey]?.map(field =>
                             <div key={field.id} className="space-y-2 p-4 border rounded-lg relative">
                                 <Button
                                     type="button"
@@ -587,8 +587,8 @@ export function TableAdd({ config, onSuccess }: TableAddProps) {
                         </div>
                     </ScrollArea>
                     <DialogFooter>
-                        <Button 
-                            type="submit" 
+                        <Button
+                            type="submit"
                             className="w-full"
                             disabled={isLoading}
                         >
