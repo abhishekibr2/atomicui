@@ -61,9 +61,9 @@ export function NavMain({
                   {item.items?.map((subItem) => (
                     <SidebarMenuSubItem key={subItem.title}>
                       <SidebarMenuSubButton asChild>
-                        <Link href={`/protected/projects/${projectNumber}/${subItem.url}`}>
+                        <a href={`/protected/projects/${projectNumber}/${subItem.url}`}>
                           <span>{subItem.title}</span>
-                        </Link>
+                        </a>
                       </SidebarMenuSubButton>
                     </SidebarMenuSubItem>
                   ))}
