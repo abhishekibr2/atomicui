@@ -29,7 +29,7 @@ const ThemeSwitcher = () => {
 
   return (
     <div className="flex font-thin">
-      <Button variant="ghost" size={"sm"} className="w-full justify-start" onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>
+      <Button variant="ghost" size={"icon"} className="w-full justify-start pl-2" onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>
         {theme === "light" ? (
           <Sun
             key="dark"
@@ -49,7 +49,7 @@ const ThemeSwitcher = () => {
             className={"text-muted-foreground"}
           />
         )}
-        <div>
+        <div className="pl-1">
           Switch Theme
         </div>
       </Button>
