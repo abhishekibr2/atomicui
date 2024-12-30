@@ -1,6 +1,7 @@
 "use client"
 import PageEditor from "@/components/page/PageEditor";
 import { FetchProjectDetail } from "@/utils/Project.util";
+import { Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { DndProvider } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
@@ -64,7 +65,16 @@ export default function PageData({ params }: DetailPageProps) {
     }, [pageId])
 
     if (loading) {
-        return <div>Loading</div>
+        return (
+            <div className="w-full h-96 flex items-center justify-center">
+                <div>
+                    <div className="flex flex-col items-center gap-4">
+                        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                        <p className="text-sm text-gray-500">Loading pages...</p>
+                    </div>
+                </div>
+            </div>
+        );
     }
 
     if (!pageData) {

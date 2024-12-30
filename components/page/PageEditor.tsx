@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Ref } from 'react';
 import { useDrag, useDrop } from 'react-dnd';
 import { Settings, X, Type } from 'lucide-react';
 import {
@@ -29,6 +29,12 @@ interface Component {
     height: number;
 }
 
+interface DropZone {
+    x: number;
+    y: number;
+    id: string;
+}
+
 interface DragItem {
     type: string;
     source: 'sidebar' | 'canvas';
@@ -37,48 +43,82 @@ interface DragItem {
 }
 
 const GRID_SIZE = 20;
-const SNAP_THRESHOLD = 20;
+const COMPONENT_GAP = 20;
 
-const findSnapPosition = (
-    currentY: number,
-    components: Component[],
-    currentId?: string
-): number => {
-    console.log('findSnapPosition called with currentY:', currentY);
-    console.log('Components:', components);
-
-    const sortedComponents = [...components].sort((a, b) => a.position.y - b.position.y);
-    let newY = Math.round(currentY / GRID_SIZE) * GRID_SIZE;
-
-    for (const component of sortedComponents) {
-        if (component.id === currentId) continue;
-
-        const bottomY = component.position.y + component.height;
-        console.log(`Checking ${component.id}: top=${component.position.y}, bottom=${bottomY}, newY=${newY}`);
-
-        if (newY >= component.position.y && newY < bottomY) {
-            newY = bottomY + GRID_SIZE;
-            console.log(`Adjusted newY to avoid overlap: ${newY}`);
-        }
+const getDropZones = (components: Component[]): DropZone[] => {
+    if (components.length === 0) {
+        return [{ x: 0, y: 0, id: 'initial' }];
     }
 
-    console.log('Final snapped Y:', newY);
-    return newY;
+    const dropZones: DropZone[] = [];
+    const sortedComponents = [...components].sort((a, b) => a.position.y - b.position.y);
+
+    // Add a drop zone at the top if there's space
+    if (sortedComponents[0]?.position.y > COMPONENT_GAP) {
+        dropZones.push({
+            x: 0,
+            y: 0,
+            id: 'dropzone-top'
+        });
+    }
+
+    // Add drop zones between and after components
+    sortedComponents.forEach((component, index) => {
+        const nextComponent = sortedComponents[index + 1];
+        const bottomY = component.position.y + component.height + COMPONENT_GAP;
+
+        if (nextComponent) {
+            // If there's enough space between this component and the next
+            if (nextComponent.position.y - bottomY >= COMPONENT_GAP) {
+                dropZones.push({
+                    x: 0,
+                    y: bottomY,
+                    id: `dropzone-between-${component.id}`
+                });
+            }
+        } else {
+            // Add drop zone after the last component
+            dropZones.push({
+                x: 0,
+                y: bottomY,
+                id: `dropzone-bottom-${component.id}`
+            });
+        }
+    });
+
+    return dropZones;
 };
 
+const findNearestDropZone = (y: number, dropZones: DropZone[]): number => {
+    if (dropZones.length === 0) return 0;
+
+    let nearestZone = dropZones[0];
+    let minDistance = Math.abs(dropZones[0].y - y);
+
+    dropZones.forEach(zone => {
+        const distance = Math.abs(zone.y - y);
+        if (distance < minDistance) {
+            minDistance = distance;
+            nearestZone = zone;
+        }
+    });
+
+    return nearestZone.y;
+};
 
 const ComponentDragItem = () => {
-    const [{ isDragging }, dragRef] = useDrag<DragItem, unknown, { isDragging: boolean }>(() => ({
+    const [{ isDragging }, dragRef] = useDrag(() => ({
         type: 'component',
-        item: {
+        item: () => ({  // Use a function to ensure fresh item each time
             type: 'component',
             source: 'sidebar',
-            componentType: 'h1'
-        },
+            componentType: 'h1',
+            id: `temp-${Date.now()}`  // Generate temporary ID for drag operation
+        }),
         collect: (monitor) => ({
             isDragging: monitor.isDragging(),
         }),
-    }));
+    }), []);
 
     return (
         <div
@@ -127,7 +167,7 @@ const DroppedComponent = ({
                 onHeightChange(component.id, height);
             }
         }
-    }, [component.content]);
+    }, [component.content, onHeightChange, component.id]);
 
     return (
         <div
@@ -148,7 +188,10 @@ const DroppedComponent = ({
                     size="icon"
                     className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 
                    transition-opacity h-6 w-6"
-                    onClick={() => onRemove(component.id)}
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        onRemove(component.id);
+                    }}
                 >
                     <X className="w-4 h-4" />
                 </Button>
@@ -157,7 +200,10 @@ const DroppedComponent = ({
                     size="icon"
                     className="absolute top-1 right-8 opacity-0 group-hover:opacity-100 
                    transition-opacity h-6 w-6"
-                    onClick={() => onSelect(component)}
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        onSelect(component);
+                    }}
                 >
                     <Settings className="w-4 h-4" />
                 </Button>
@@ -171,8 +217,13 @@ const DroppedComponent = ({
 
 const PageEditor = () => {
     const [components, setComponents] = useState<Component[]>([]);
+    const [dropZones, setDropZones] = useState<DropZone[]>([{ x: 0, y: 0, id: 'initial' }]);
     const [selectedComponent, setSelectedComponent] = useState<Component | null>(null);
     const [isConfigOpen, setIsConfigOpen] = useState(false);
+
+    useEffect(() => {
+        setDropZones(getDropZones(components));
+    }, [components]);
 
     const handleSelect = (component: Component) => {
         setSelectedComponent(component);
@@ -180,14 +231,16 @@ const PageEditor = () => {
     };
 
     const updateComponent = (updatedComponent: Component) => {
-        setComponents(components.map(comp =>
-            comp.id === updatedComponent.id ? updatedComponent : comp
-        ));
+        setComponents(prevComponents =>
+            prevComponents.map(comp =>
+                comp.id === updatedComponent.id ? updatedComponent : comp
+            )
+        );
         setSelectedComponent(updatedComponent);
     };
 
     const removeComponent = (id: string) => {
-        setComponents(components.filter(comp => comp.id !== id));
+        setComponents(prevComponents => prevComponents.filter(comp => comp.id !== id));
         if (selectedComponent?.id === id) {
             setSelectedComponent(null);
             setIsConfigOpen(false);
@@ -195,59 +248,66 @@ const PageEditor = () => {
     };
 
     const handleHeightChange = (id: string, height: number) => {
-        setComponents(components.map(comp =>
-            comp.id === id ? { ...comp, height } : comp
-        ));
+        setComponents(prevComponents =>
+            prevComponents.map(comp =>
+                comp.id === id ? { ...comp, height } : comp
+            )
+        );
     };
 
     const handleMove = (id: string, newY: number) => {
-        setComponents(components.map(comp =>
-            comp.id === id ? { ...comp, position: { ...comp.position, y: newY } } : comp
-        ));
+        setComponents(prevComponents =>
+            prevComponents.map(comp =>
+                comp.id === id ? { ...comp, position: { ...comp.position, y: newY } } : comp
+            )
+        );
     };
 
-    const [, dropRef] = useDrop<DragItem, void, unknown>(() => ({
+    const [{ isOver }, dropRef] = useDrop(() => ({
         accept: 'component',
-        drop: (item, monitor) => {
+        drop: (item: DragItem, monitor) => {
             const offset = monitor.getClientOffset();
             if (!offset) return;
 
-            const x = 0; // Fixed X position
-            const rawY = offset.y - 64; // Adjust for canvas offset
+            const x = 0;
+            const rawY = offset.y - 64;
+            const snappedY = findNearestDropZone(rawY, dropZones);
 
             if (item.source === 'sidebar') {
-                setComponents((prevComponents) => {
-                    const snappedY = findSnapPosition(rawY, prevComponents); // Use previous components
-                    const newComponent: Component = {
-                        id: `component-${Date.now()}`,
-                        type: 'h1',
-                        content: 'New Heading',
-                        position: { x, y: snappedY },
-                        height: 0, // Default height
-                    };
-                    console.log('Adding new component:', newComponent);
-                    return [...prevComponents, newComponent]; // Append new component
-                });
+                // Generate a new permanent ID for the dropped component
+                const newComponent: Component = {
+                    id: `component-${Date.now()}`,
+                    type: 'h1',
+                    content: 'New Heading',
+                    position: { x, y: snappedY },
+                    height: 0,
+                };
+                setComponents(prev => [...prev, newComponent]);
             } else if (item.source === 'canvas' && item.id) {
-                setComponents((prevComponents) => {
-                    const snappedY = findSnapPosition(rawY, prevComponents, item.id);
-                    handleMove(item.id || "", snappedY);
-                    return prevComponents;
-                });
+                setComponents(prev =>
+                    prev.map(comp =>
+                        comp.id === item.id
+                            ? { ...comp, position: { ...comp.position, y: snappedY } }
+                            : comp
+                    )
+                );
             }
         },
-    }));
+        collect: (monitor) => ({
+            isOver: monitor.isOver()
+        })
+    }), [dropZones]);
 
     return (
         <div className="flex h-screen">
-            <div className="w-72 border-r bg-gray-50 p-4">
+            <div className="w-72 border-r p-4">
                 <h2 className="font-semibold mb-4">Components</h2>
                 <ComponentDragItem />
             </div>
 
             <div
-                ref={dropRef as unknown as React.RefObject<HTMLDivElement>}
-                className="flex-1 relative overflow-auto"
+                ref={dropRef as unknown as Ref<HTMLDivElement>}
+                className={`flex-1 relative overflow-auto ${isOver ? 'bg-blue-50' : ''}`}
             >
                 <div className="w-full h-full p-16 relative">
                     <div
@@ -258,6 +318,19 @@ const PageEditor = () => {
                         }}
                     />
 
+                    {/* Drop zones visualization */}
+                    {dropZones.map((zone) => (
+                        <div
+                            key={zone.id}
+                            className="absolute w-full h-8 border-2 border-dashed border-blue-300 bg-blue-50 bg-opacity-50"
+                            style={{
+                                left: zone.x,
+                                top: zone.y,
+                            }}
+                        />
+                    ))}
+
+                    {/* Placed components */}
                     {components.map((component) => (
                         <DroppedComponent
                             key={component.id}
@@ -265,7 +338,15 @@ const PageEditor = () => {
                             onSelect={handleSelect}
                             onRemove={removeComponent}
                             onHeightChange={handleHeightChange}
-                            onMove={handleMove}
+                            onMove={(id, y) => {
+                                setComponents(prev =>
+                                    prev.map(comp =>
+                                        comp.id === id
+                                            ? { ...comp, position: { ...comp.position, y } }
+                                            : comp
+                                    )
+                                );
+                            }}
                         />
                     ))}
                 </div>
