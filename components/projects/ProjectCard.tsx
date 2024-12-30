@@ -9,6 +9,7 @@ import { ProjectSchema } from "@/schema/project";
 import { FetchProjects } from "@/utils/Project.util";
 import { formatDistanceToNow } from "date-fns";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 // Define props interface for ProjectCard
 interface ProjectCardProps {
@@ -38,34 +39,36 @@ const ProjectCard = ({ project }: ProjectCardProps) => {
     };
 
     return (
-        <Card className="hover:shadow-lg transition-shadow duration-200 hover:cursor-pointer" onClick={() => router.push(`/protected/projects/${project.id}`)}>
-            <CardHeader>
-                <CardTitle className="flex items-center justify-between">
-                    <span className="truncate">{project.project_name}</span>
-                    <span className="text-sm text-muted-foreground">#{project.id}</span>
-                </CardTitle>
-                <CardDescription className="flex items-center gap-2">
-                    <Clock className="h-4 w-4" />
-                    {formatDate(project.created_at)}
-                </CardDescription>
-            </CardHeader>
-            <CardContent>
-                <div className="space-y-4">
-                    <div className="flex items-start gap-2">
-                        <FileText className="h-4 w-4 mt-1 text-muted-foreground" />
-                        <p className="text-sm text-muted-foreground leading-relaxed">
-                            {project.project_description || "No description available"}
-                        </p>
+        <Card className="hover:shadow-lg transition-shadow duration-200 hover:cursor-pointer">
+            <Link href={`/protected/projects/${project.id}`} >
+                <CardHeader>
+                    <CardTitle className="flex items-center justify-between">
+                        <span className="truncate">{project.project_name}</span>
+                        <span className="text-sm text-muted-foreground">#{project.id}</span>
+                    </CardTitle>
+                    <CardDescription className="flex items-center gap-2">
+                        <Clock className="h-4 w-4" />
+                        {formatDate(project.created_at)}
+                    </CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <div className="space-y-4">
+                        <div className="flex items-start gap-2">
+                            <FileText className="h-4 w-4 mt-1 text-muted-foreground" />
+                            <p className="text-sm text-muted-foreground leading-relaxed">
+                                {project.project_description || "No description available"}
+                            </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <Calendar className="h-4 w-4 text-muted-foreground" />
+                            <time className="text-sm text-muted-foreground">
+                                {formatDetailedDate(project.created_at)}
+                            </time>
+                        </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                        <Calendar className="h-4 w-4 text-muted-foreground" />
-                        <time className="text-sm text-muted-foreground">
-                            {formatDetailedDate(project.created_at)}
-                        </time>
-                    </div>
-                </div>
-            </CardContent>
-        </Card>
+                </CardContent>
+            </Link>
+        </Card >
     );
 };
 
