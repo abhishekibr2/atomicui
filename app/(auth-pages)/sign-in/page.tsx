@@ -1,12 +1,7 @@
-import { signInAction } from "@/app/actions";
-import { FormMessage, Message } from "@/components/form-message";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { GalleryVerticalEnd } from "lucide-react";
-import Link from "next/link";
-
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Message } from "@/components/form-message";
+import { LoginForm } from "./LoginForm";
 
 export default async function Login(props: { searchParams: Promise<Message> }) {
   const searchParams = await props.searchParams;
@@ -30,39 +25,11 @@ export default async function Login(props: { searchParams: Promise<Message> }) {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <form>
-                <div className="grid gap-6">
-                  <div className="grid gap-6">
-                    <div className="grid gap-2">
-                      <Label htmlFor="email">Email</Label>
-                      <Input name="email" placeholder="you@example.com" required />
-                    </div>
-                    <div className="grid gap-2">
-                      <div className="flex items-center">
-                        <Label htmlFor="password">Password</Label>
-                        <Link
-                          className="text-xs text-foreground underline"
-                          href="/forgot-password"
-                        >
-                          Forgot Password?
-                        </Link>
-                      </div>
-                      <Input id="password" name="password" type="password" required />
-                    </div>
-                    <Button type="submit" className="w-full" formAction={signInAction}>
-                      Login
-                    </Button>
-                  </div>
-                </div>
-              </form>
-              <div className="flex flex-col gap-2">
-                <FormMessage message={searchParams} />
-              </div>
-
+              <LoginForm message={searchParams} />
             </CardContent>
           </Card>
         </div>
       </div>
-    </ div>
+    </div>
   );
 }
