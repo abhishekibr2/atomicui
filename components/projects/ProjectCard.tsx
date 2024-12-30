@@ -38,7 +38,7 @@ const ProjectCard = ({ project }: ProjectCardProps) => {
     };
 
     return (
-        <Card className="hover:shadow-lg transition-shadow duration-200" onClick={() => router.push(`/protected/projects/${project.id}`)}>
+        <Card className="hover:shadow-lg transition-shadow duration-200 hover:cursor-pointer" onClick={() => router.push(`/protected/projects/${project.id}`)}>
             <CardHeader>
                 <CardTitle className="flex items-center justify-between">
                     <span className="truncate">{project.project_name}</span>
