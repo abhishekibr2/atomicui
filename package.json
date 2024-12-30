@@ -6,6 +6,8 @@
     "start": "next start"
   },
   "dependencies": {
+    "@radix-ui/react-accordion": "^1.2.2",
+    "@radix-ui/react-alert-dialog": "^1.1.4",
     "@radix-ui/react-avatar": "^1.1.2",
     "@radix-ui/react-checkbox": "^1.1.1",
     "@radix-ui/react-collapsible": "^1.1.2",
@@ -26,13 +28,17 @@
     "date-fns": "^4.1.0",
     "framer-motion": "^11.15.0",
     "lucide-react": "^0.469.0",
+    "moment": "^2.30.1",
     "next": "latest",
     "next-themes": "^0.4.3",
     "nextjs-toploader": "^3.7.15",
     "prettier": "^3.3.3",
     "react": "19.0.0",
+    "react-dnd": "^16.0.1",
+    "react-dnd-html5-backend": "^16.0.1",
     "react-dom": "19.0.0",
-    "turborepo": "^0.0.1"
+    "turborepo": "^0.0.1",
+    "zod": "^3.24.1"
   },
   "devDependencies": {
     "@types/node": "22.10.2",

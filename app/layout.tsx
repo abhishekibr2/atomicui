@@ -33,7 +33,7 @@ export default function RootLayout({
         <TopLoader />
         <ThemeProvider
           attribute="class"
-          defaultTheme="system"
+          defaultTheme="light"
           enableSystem
           disableTransitionOnChange
         >
