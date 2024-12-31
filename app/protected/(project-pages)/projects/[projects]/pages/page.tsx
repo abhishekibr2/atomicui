@@ -25,15 +25,33 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { FetchProjectDetail } from "@/utils/Project.util";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { z } from "zod";
 import { useRouter } from 'next/navigation';
-import moment from "moment"
+import moment from "moment";
+
+interface ContentConfig {
+  type: string;
+  name: string;
+  config: any;
+}
 
 interface PageSchema {
-  _id: string;
-  pageUrl: string;
-  pageDescription: string;
-  createdAt: string;
+  id: string;
+  page_url: string;
+  page_title: string;
+  page_description: string;
+  page_status: "draft" | "published" | "archived";
+  page_metadata_title: string;
+  page_metadata_description: string;
+  page_content: ContentConfig[];
+  created_at: number;
 }
 
 interface PagesTableProps {
@@ -41,24 +59,33 @@ interface PagesTableProps {
 }
 
 const PageSchema = z.object({
-  pageUrl: z
-    .string()
-    .nonempty("Page URL is required."),
-  pageDescription: z
-    .string()
-    .min(5, "Description must be at least 10 characters long.")
-    .nonempty("Description is required."),
+  page_url: z.string().nonempty("Page URL is required."),
+  page_title: z.string().nonempty("Page title is required."),
+  page_description: z.string().min(5, "Description must be at least 5 characters long."),
+  page_status: z.enum(["draft", "published", "archived"]),
+  page_metadata_title: z.string().nonempty("Meta title is required."),
+  page_metadata_description: z.string().min(5, "Meta description must be at least 5 characters long."),
+  page_content: z.array(z.object({
+    type: z.string(),
+    name: z.string(),
+    config: z.any()
+  })).default([])
 });
 
 const PagesTable: React.FC<PagesTableProps> = ({ params }) => {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
-  const [url, setUrl] = useState("");
-  const [pageDescription, setPageDescription] = useState("");
+  const [formData, setFormData] = useState({
+    page_url: "",
+    page_title: "",
+    page_description: "",
+    page_status: "draft" as const,
+    page_metadata_title: "",
+    page_metadata_description: "",
+  });
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pages, setPages] = useState<PageSchema[]>([]);
-  const [data, setData] = useState<any>({});
   const [validationError, setValidationError] = useState<string | null>(null);
   const router = useRouter();
 
@@ -68,22 +95,22 @@ const PagesTable: React.FC<PagesTableProps> = ({ params }) => {
       try {
         const { projects } = await params;
         const response = await FetchProjectDetail(projects);
-        if (!response.ok) {
-          throw new Error('Page not found');
+        if (!response.ok || !response.data) {
+          throw new Error('Project not found');
         }
-        if (!response.data) {
-          return;
-        }
-        const externalData = await fetch(response.data.project_base_api_url + "/external/page", {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-            'EXTERNAL_API_SECRET': "test123"
-          },
-        });
+
+        const externalData = await fetch(
+          `${process.env.NEXT_PUBLIC_LOCAL_BASE_API_URL || response.data.project_base_api_url}/external/page/get-pages`,
+          {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+              'EXTERNAL_API_SECRET': "test123"
+            },
+          }
+        );
         const body = await externalData.json();
-        setPages(body.page || []);
-        setData(response.data);
+        setPages(body.page.data || []);
       } catch (error) {
         setError(error instanceof Error ? error.message : 'Failed to load pages');
       } finally {
@@ -94,38 +121,37 @@ const PagesTable: React.FC<PagesTableProps> = ({ params }) => {
     fetchPages();
   }, [params]);
 
+  const handleInputChange = (field: keyof typeof formData, value: string) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
   const handleSubmit = async () => {
-    setIsAddDialogOpen(true);
     try {
-      PageSchema.parse({ pageUrl: url, pageDescription });
-
-
+      PageSchema.parse(formData);
       setValidationError(null);
       setIsSubmitting(true);
 
       const { projects } = await params;
       const response = await FetchProjectDetail(projects);
-      if (!response.ok) {
-        throw new Error("Page not found");
-      }
-      if (!response.data) {
-        return;
+      if (!response.ok || !response.data) {
+        throw new Error("Project not found");
       }
 
       const externalData = await fetch(
-        response.data.project_base_api_url + "/external/page",
+        `${process.env.NEXT_PUBLIC_LOCAL_BASE_API_URL || response.data.project_base_api_url}/external/page/insert-page`,
         {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             EXTERNAL_API_SECRET: "test123",
           },
-          body: JSON.stringify({ pageUrl: url, pageDescription, EXTERNAL_API_SECRET: "test123" }),
+          body: JSON.stringify({
+            pageData: JSON.stringify({ ...formData }),
+            EXTERNAL_API_SECRET: "test123",
+          })
         }
       );
-
       const responseData = await externalData.json();
-
       if (!externalData.ok) {
         throw new Error(responseData.message || "Failed to create page");
       }
@@ -133,8 +159,14 @@ const PagesTable: React.FC<PagesTableProps> = ({ params }) => {
       if (responseData.page) {
         setPages([...pages, responseData.page]);
       }
-      setUrl("");
-      setPageDescription("");
+      setFormData({
+        page_url: "",
+        page_title: "",
+        page_description: "",
+        page_status: "draft",
+        page_metadata_title: "",
+        page_metadata_description: "",
+      });
       setIsAddDialogOpen(false);
     } catch (err: any) {
       if (err instanceof z.ZodError) {
@@ -150,11 +182,9 @@ const PagesTable: React.FC<PagesTableProps> = ({ params }) => {
   if (isLoading) {
     return (
       <div className="w-full h-96 flex items-center justify-center">
-        <div>
-          <div className="flex flex-col items-center gap-4">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
-            <p className="text-sm text-gray-500">Loading pages...</p>
-          </div>
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="text-sm text-gray-500">Connecting to the Project's Database...</p>
         </div>
       </div>
     );
@@ -162,7 +192,7 @@ const PagesTable: React.FC<PagesTableProps> = ({ params }) => {
 
   return (
     <div className="w-full">
-      <div className="p-6 border-none	">
+      <div className="p-6 border-none">
         <div className="flex justify-between items-center mb-6">
           <div>
             <h1 className="text-2xl font-bold">Pages</h1>
@@ -185,27 +215,29 @@ const PagesTable: React.FC<PagesTableProps> = ({ params }) => {
             <TableHeader>
               <TableRow>
                 <TableHead>Page URL</TableHead>
-                <TableHead>Description</TableHead>
+                <TableHead>Title</TableHead>
+                <TableHead>Status</TableHead>
                 <TableHead>Created At</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {pages.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={2} className="text-center text-muted-foreground">
+                  <TableCell colSpan={4} className="text-center text-muted-foreground">
                     No pages available
                   </TableCell>
                 </TableRow>
               ) : (
                 pages.map((page) => (
                   <TableRow
-                    key={page._id}
-                    className="hover:bg-muted/50 transition-colors"
-                    onClick={() => { router.push(`pages/` + page._id) }}
+                    key={page.id}
+                    className="hover:bg-muted/50 transition-colors hover:cursor-pointer"
+                    onClick={() => { router.push(`pages/${page.id}`) }}
                   >
-                    <TableCell className="font-medium">{page.pageUrl}</TableCell>
-                    <TableCell>{page.pageDescription}</TableCell>
-                    <TableCell>{moment(page.createdAt.toString()).fromNow().toString()}</TableCell>
+                    <TableCell className="font-medium">{page.page_url}</TableCell>
+                    <TableCell>{page.page_title}</TableCell>
+                    <TableCell>{page.page_status}</TableCell>
+                    <TableCell>{moment(page.created_at).fromNow()}</TableCell>
                   </TableRow>
                 ))
               )}
@@ -218,37 +250,88 @@ const PagesTable: React.FC<PagesTableProps> = ({ params }) => {
             <AlertDialogHeader>
               <AlertDialogTitle>Add New Page</AlertDialogTitle>
               <AlertDialogDescription>
-                Add a new page to your website. All fields are required.
+                Create a new page for your website. Content can be added after creation.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <div className="grid gap-6 py-4">
               <div className="grid gap-2">
-                <Label htmlFor="url">Page URL</Label>
+                <Label htmlFor="page_url">Page URL</Label>
                 <Input
-                  id="url"
-                  placeholder="Enter Page URL"
-                  value={url}
-                  onChange={(e) => setUrl(e.target.value)}
-                  required
+                  id="page_url"
+                  placeholder="Enter page URL"
+                  value={formData.page_url}
+                  onChange={(e) => handleInputChange("page_url", e.target.value)}
                 />
               </div>
+
               <div className="grid gap-2">
-                <Label htmlFor="description">Description</Label>
+                <Label htmlFor="page_title">Page Title</Label>
+                <Input
+                  id="page_title"
+                  placeholder="Enter page title"
+                  value={formData.page_title}
+                  onChange={(e) => handleInputChange("page_title", e.target.value)}
+                />
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="page_description">Page Description</Label>
                 <Textarea
-                  id="description"
-                  placeholder="Enter Page Description"
-                  value={pageDescription}
-                  onChange={(e) => setPageDescription(e.target.value)}
-                  className="min-h-32"
-                  required
+                  id="page_description"
+                  placeholder="Enter page description"
+                  value={formData.page_description}
+                  onChange={(e) => handleInputChange("page_description", e.target.value)}
+                  className="min-h-20"
+                />
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="page_status">Status</Label>
+                <Select
+                  value={formData.page_status}
+                  onValueChange={(value: "draft" | "published" | "archived") =>
+                    handleInputChange("page_status", value)
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="draft">Draft</SelectItem>
+                    <SelectItem value="published">Published</SelectItem>
+                    <SelectItem value="archived">Archived</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="page_metadata_title">Meta Title</Label>
+                <Input
+                  id="page_metadata_title"
+                  placeholder="Enter meta title"
+                  value={formData.page_metadata_title}
+                  onChange={(e) => handleInputChange("page_metadata_title", e.target.value)}
+                />
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="page_metadata_description">Meta Description</Label>
+                <Textarea
+                  id="page_metadata_description"
+                  placeholder="Enter meta description"
+                  value={formData.page_metadata_description}
+                  onChange={(e) => handleInputChange("page_metadata_description", e.target.value)}
+                  className="min-h-20"
                 />
               </div>
             </div>
+
             {validationError && (
               <Alert variant="destructive" className="mb-6">
                 <AlertDescription>{validationError}</AlertDescription>
               </Alert>
             )}
+
             <AlertDialogFooter>
               <AlertDialogCancel disabled={isSubmitting}>Cancel</AlertDialogCancel>
               <Button
@@ -257,7 +340,7 @@ const PagesTable: React.FC<PagesTableProps> = ({ params }) => {
                 className="gap-2"
               >
                 {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
-                Add Page
+                Create Page
               </Button>
             </AlertDialogFooter>
           </AlertDialogContent>
