@@ -1,6 +1,7 @@
-import React, { useState, useEffect, Ref } from 'react';
-import { useDrag, useDrop } from 'react-dnd';
-import { Settings, X, Type } from 'lucide-react';
+"use client"
+import React, { useState, useRef, useEffect } from 'react';
+import { useDrag, useDrop, DropTargetMonitor, ConnectDropTarget } from 'react-dnd';
+import { Settings, X, GripVertical } from 'lucide-react';
 import {
     Card,
     CardContent,
@@ -20,369 +21,757 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ContentConfig } from '@/schema/page';
+import { DRAGGABLE_COMPONENTS, ComponentDragItem, DraggableComponent } from './PageEditorComponents';
+import { ResizableBox } from 'react-resizable';
+import 'react-resizable/css/styles.css';
 
 interface Component {
     id: string;
-    type: 'h1';
+    type: DraggableComponent['type'];
     content: string;
     position: { x: number; y: number };
     height: number;
-}
-
-interface DropZone {
-    x: number;
-    y: number;
-    id: string;
+    width: number;
+    minWidth?: number;
+    maxWidth?: number;
+    zIndex: number;
+    gridColumn?: number;
+    gridRow?: number;
+    isContainer?: boolean;
+    columns?: number[];
+    children?: Component[];
 }
 
 interface DragItem {
     type: string;
     source: 'sidebar' | 'canvas';
-    componentType: 'h1';
+    componentType: DraggableComponent['type'];
     id?: string;
+    isContainer?: boolean;
 }
 
-const GRID_SIZE = 20;
-const COMPONENT_GAP = 20;
+interface PageEditorProps {
+    content: ContentConfig[];
+    onChange: (content: ContentConfig[]) => void;
+}
 
-const getDropZones = (components: Component[]): DropZone[] => {
-    if (components.length === 0) {
-        return [{ x: 0, y: 0, id: 'initial' }];
-    }
-
-    const dropZones: DropZone[] = [];
-    const sortedComponents = [...components].sort((a, b) => a.position.y - b.position.y);
-
-    // Add a drop zone at the top if there's space
-    if (sortedComponents[0]?.position.y > COMPONENT_GAP) {
-        dropZones.push({
-            x: 0,
-            y: 0,
-            id: 'dropzone-top'
-        });
-    }
-
-    // Add drop zones between and after components
-    sortedComponents.forEach((component, index) => {
-        const nextComponent = sortedComponents[index + 1];
-        const bottomY = component.position.y + component.height + COMPONENT_GAP;
-
-        if (nextComponent) {
-            // If there's enough space between this component and the next
-            if (nextComponent.position.y - bottomY >= COMPONENT_GAP) {
-                dropZones.push({
-                    x: 0,
-                    y: bottomY,
-                    id: `dropzone-between-${component.id}`
-                });
-            }
-        } else {
-            // Add drop zone after the last component
-            dropZones.push({
-                x: 0,
-                y: bottomY,
-                id: `dropzone-bottom-${component.id}`
-            });
-        }
-    });
-
-    return dropZones;
-};
-
-const findNearestDropZone = (y: number, dropZones: DropZone[]): number => {
-    if (dropZones.length === 0) return 0;
-
-    let nearestZone = dropZones[0];
-    let minDistance = Math.abs(dropZones[0].y - y);
-
-    dropZones.forEach(zone => {
-        const distance = Math.abs(zone.y - y);
-        if (distance < minDistance) {
-            minDistance = distance;
-            nearestZone = zone;
-        }
-    });
-
-    return nearestZone.y;
-};
-
-const ComponentDragItem = () => {
-    const [{ isDragging }, dragRef] = useDrag(() => ({
-        type: 'component',
-        item: () => ({  // Use a function to ensure fresh item each time
-            type: 'component',
-            source: 'sidebar',
-            componentType: 'h1',
-            id: `temp-${Date.now()}`  // Generate temporary ID for drag operation
-        }),
-        collect: (monitor) => ({
-            isDragging: monitor.isDragging(),
-        }),
-    }), []);
-
-    return (
-        <div
-            ref={dragRef as unknown as React.RefObject<HTMLDivElement>}
-            className={`p-4 border rounded-lg cursor-move flex items-center gap-2 
-                ${isDragging ? 'opacity-50' : ''}`}
-        >
-            <Type className="w-4 h-4" />
-            <span>Heading (H1)</span>
-        </div>
-    );
-};
+const resizeStyles = `
+  .react-resizable {
+    position: relative;
+  }
+  .react-resizable-handle {
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    background-color: #4f46e5;
+    border-radius: 50%;
+    border: 2px solid white;
+    box-shadow: 0 0 0 1px rgba(0,0,0,0.1);
+    padding: 0;
+    z-index: 40;
+  }
+  .react-resizable-handle-se {
+    bottom: -5px;
+    right: -5px;
+    cursor: se-resize;
+  }
+  .react-resizable-handle-e {
+    right: -5px;
+    top: 50%;
+    cursor: e-resize;
+    transform: translateY(-50%);
+  }
+  .react-resizable-handle-s {
+    bottom: -5px;
+    left: 50%;
+    cursor: s-resize;
+    transform: translateX(-50%);
+  }
+`;
 
 const DroppedComponent = ({
     component,
     onSelect,
     onRemove,
     onHeightChange,
-    onMove
+    onMove,
+    isLast,
+    gridPosition,
+    onDropInContainer
 }: {
     component: Component;
     onSelect: (component: Component) => void;
     onRemove: (id: string) => void;
-    onHeightChange: (id: string, height: number) => void;
-    onMove: (id: string, y: number) => void;
+    onHeightChange: (id: string, height: number, width: number) => void;
+    onMove: (id: string, x: number, y: number) => void;
+    isLast: boolean;
+    gridPosition: { column: number; row: number };
+    onDropInContainer?: (containerId: string, componentData: any, columnIndex: number) => void;
 }) => {
-    const componentRef = React.useRef<HTMLDivElement>(null);
+    const [isDragging, setIsDragging] = useState(false);
+    const dropElementRef = useRef<HTMLDivElement | null>(null);
 
-    const [{ isDragging }, dragRef] = useDrag<DragItem, unknown, { isDragging: boolean }>(() => ({
+    const [{ isDragging: isBeingDragged }, dragRef] = useDrag(() => ({
         type: 'component',
         item: {
             type: 'component',
             source: 'canvas',
-            componentType: 'h1',
-            id: component.id
+            componentType: component.type,
+            id: component.id,
+            isContainer: component.isContainer,
         },
         collect: (monitor) => ({
             isDragging: monitor.isDragging(),
         }),
-    }));
+    }), [component]);
 
-    useEffect(() => {
-        if (componentRef.current) {
-            const height = componentRef.current.getBoundingClientRect().height;
-            if (height !== component.height) {
-                onHeightChange(component.id, height);
+    const [{ isOver }, dropRef] = useDrop<DragItem, void, { isOver: boolean }>(() => ({
+        accept: 'component',
+        canDrop: (item) => {
+            // Don't allow dropping containers inside containers
+            if (component.isContainer && item.isContainer) return false;
+            // Don't allow dropping into itself
+            if (item.id === component.id) return false;
+            return Boolean(component.isContainer);
+        },
+        drop: (item: DragItem, monitor) => {
+            if (!component.isContainer || !onDropInContainer) return;
+
+            const dropTargetElement = dropElementRef.current;
+            if (!dropTargetElement) return;
+
+            const dropTargetRect = dropTargetElement.getBoundingClientRect();
+            const clientOffset = monitor.getClientOffset();
+            if (!clientOffset) return;
+
+            const columnWidth = dropTargetRect.width / (component.columns?.length || 1);
+            const columnIndex = Math.floor((clientOffset.x - dropTargetRect.left) / columnWidth);
+
+            onDropInContainer(component.id, item, columnIndex);
+        },
+        collect: (monitor) => ({
+            isOver: monitor.isOver(),
+        }),
+    }), [component, onDropInContainer]);
+
+    const renderComponent = () => {
+        if (component.isContainer) {
+            return (
+                <div className="w-full flex gap-2 min-h-[100px]">
+                    {component.columns?.map((columnWidth, index) => (
+                        <div
+                            key={index}
+                            className={`border border-dashed border-gray-200 rounded-lg p-2 transition-colors w-full
+                                ${isOver ? 'bg-blue-50/50' : ''}`}
+                            style={{ flex: columnWidth }}
+                        >
+                            <div className="text-xs text-gray-400 mb-1 text-center">
+                                {Math.round((columnWidth / 12) * 100)}% Width
+                            </div>
+                            <div className="space-y-2">
+                                {component.children?.filter(child => child.gridColumn === index).map(child => (
+                                    <DroppedComponent
+                                        key={child.id}
+                                        component={child}
+                                        onSelect={onSelect}
+                                        onRemove={onRemove}
+                                        onHeightChange={onHeightChange}
+                                        onMove={onMove}
+                                        isLast={false}
+                                        gridPosition={{ column: 1, row: 1 }}
+                                        onDropInContainer={onDropInContainer}
+                                    />
+                                ))}
+                            </div>
+                            {(!component.children || !component.children.some(child => child.gridColumn === index)) && (
+                                <div className="h-full min-h-[60px] flex items-center justify-center text-gray-400">
+                                    Drop components here
+                                </div>
+                            )}
+                        </div>
+                    ))}
+                </div>
+            );
+        }
+
+        switch (component.type) {
+            case 'h1':
+                return <h1 className="text-4xl font-bold w-full">{component.content}</h1>;
+            case 'paragraph':
+                return <p className="text-base w-full">{component.content}</p>;
+            case 'image':
+                return (
+                    <div className="relative w-full h-full overflow-hidden">
+                        <img
+                            src={component.content}
+                            alt="Dropped image"
+                            className="absolute inset-0 w-full h-full object-cover"
+                        />
+                    </div>
+                );
+            default:
+                return null;
+        }
+    };
+
+    const handleResize = (e: React.SyntheticEvent, { size }: { size: { width: number; height: number } }) => {
+        e.stopPropagation();
+        if (!isDragging) {
+            onHeightChange(component.id, size.height, size.width);
+        }
+    };
+
+    const combinedRef = (node: HTMLDivElement | null) => {
+        dropElementRef.current = node;
+        if (!component.isContainer) {
+            dragRef(node);
+        } else {
+            dropRef(node);
+            // Make container draggable by its header
+            const header = node?.querySelector('.drag-handle') as HTMLElement;
+            if (header) {
+                dragRef(header);
             }
         }
-    }, [component.content, onHeightChange, component.id]);
+    };
 
     return (
         <div
-            ref={(node) => {
-                (dragRef as any)(node);
-                componentRef.current = node;
-            }}
-            className="absolute w-full"
+            ref={combinedRef}
+            className={`relative transition-all duration-200 w-full mb-2 ${isBeingDragged ? 'opacity-50' : ''}`}
             style={{
-                left: component.position.x,
-                top: component.position.y,
-                opacity: isDragging ? 0.5 : 1,
+                width: '100%',
+                height: component.isContainer ? 'auto' : component.height,
             }}
         >
-            <Card className="group relative">
-                <Button
-                    variant="ghost"
-                    size="icon"
-                    className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 
-                   transition-opacity h-6 w-6"
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        onRemove(component.id);
-                    }}
-                >
-                    <X className="w-4 h-4" />
-                </Button>
-                <Button
-                    variant="ghost"
-                    size="icon"
-                    className="absolute top-1 right-8 opacity-0 group-hover:opacity-100 
-                   transition-opacity h-6 w-6"
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        onSelect(component);
-                    }}
-                >
-                    <Settings className="w-4 h-4" />
-                </Button>
-                <CardContent className="p-4">
-                    <h1 className="text-4xl font-bold">{component.content}</h1>
-                </CardContent>
-            </Card>
+            {component.isContainer ? (
+                <Card className="group relative border border-transparent hover:border-blue-500 w-full">
+                    <div className="absolute top-0 right-0 opacity-0 group-hover:opacity-100 
+                        transition-opacity bg-white rounded-bl-lg border-l border-b z-10">
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onRemove(component.id);
+                            }}
+                        >
+                            <X className="w-4 h-4" />
+                        </Button>
+                    </div>
+                    <CardContent className="p-2">
+                        {renderComponent()}
+                    </CardContent>
+                </Card>
+            ) : (
+                <Card className="group relative h-full border border-transparent hover:border-blue-500 w-full cursor-move">
+                    <div className="absolute top-0 right-0 opacity-0 group-hover:opacity-100 
+                        transition-opacity bg-white rounded-bl-lg border-l border-b z-10">
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onSelect(component);
+                            }}
+                        >
+                            <Settings className="w-4 h-4" />
+                        </Button>
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onRemove(component.id);
+                            }}
+                        >
+                            <X className="w-4 h-4" />
+                        </Button>
+                    </div>
+                    <CardContent className="p-2 h-full">
+                        {renderComponent()}
+                    </CardContent>
+                </Card>
+            )}
         </div>
     );
 };
 
-const PageEditor = () => {
+const PageEditor = ({ content, onChange }: PageEditorProps) => {
     const [components, setComponents] = useState<Component[]>([]);
-    const [dropZones, setDropZones] = useState<DropZone[]>([{ x: 0, y: 0, id: 'initial' }]);
     const [selectedComponent, setSelectedComponent] = useState<Component | null>(null);
     const [isConfigOpen, setIsConfigOpen] = useState(false);
+    const [count, setCount] = useState(1);
+    const [maxZIndex, setMaxZIndex] = useState(1);
+    const dropAreaRef = useRef<HTMLDivElement>(null);
+    const isInitialMount = useRef(true);
 
+    // Transform components to ContentConfig format
+    const transformToContentConfig = (components: Component[]): ContentConfig[] => {
+        const transformComponent = (component: Component): ContentConfig => {
+            const baseConfig = {
+                id: component.id,
+                content: component.content,
+                position: component.position,
+                height: component.height,
+                width: component.width,
+                zIndex: component.zIndex,
+                gridColumn: component.gridColumn,
+                gridRow: component.gridRow,
+            };
+
+            if (component.isContainer) {
+                return {
+                    type: component.type,
+                    name: `Container ${component.type}`,
+                    config: {
+                        ...baseConfig,
+                        columns: component.columns,
+                        children: component.children?.map(child => transformComponent(child)) || []
+                    }
+                };
+            }
+
+            return {
+                type: component.type,
+                name: `${component.type.charAt(0).toUpperCase() + component.type.slice(1)} Component`,
+                config: baseConfig
+            };
+        };
+
+        return components.map(transformComponent);
+    };
+
+    // Update components when content prop changes
     useEffect(() => {
-        setDropZones(getDropZones(components));
-    }, [components]);
+        if (!content || isInitialMount.current) {
+            isInitialMount.current = false;
+            return;
+        }
+
+        // Transform ContentConfig back to Component format
+        const transformToComponent = (config: ContentConfig): Component => {
+            const baseComponent = {
+                id: config.config.id || `component-${Date.now()}`,
+                type: config.type as DraggableComponent['type'],
+                content: config.config.content || '',
+                position: config.config.position || { x: 0, y: 0 },
+                height: config.config.height || 100,
+                width: config.config.width || 800,
+                zIndex: config.config.zIndex || 1,
+                gridColumn: config.config.gridColumn,
+                gridRow: config.config.gridRow,
+            };
+
+            if (config.type.startsWith('container-')) {
+                return {
+                    ...baseComponent,
+                    isContainer: true,
+                    columns: config.config.columns || [12],
+                    children: config.config.children?.map(transformToComponent) || []
+                };
+            }
+
+            return baseComponent;
+        };
+
+        const newComponents = content.map(transformToComponent);
+        if (JSON.stringify(newComponents) !== JSON.stringify(components)) {
+            setComponents(newComponents);
+        }
+    }, [content]);
+
+    // Notify parent of changes
+    const notifyChanges = () => {
+        const contentConfig = transformToContentConfig(components);
+        console.log('Current Page Content:', contentConfig);
+        onChange(contentConfig);
+    };
+
+    // Update components and notify parent
+    const updateComponentsAndNotify = (newComponents: Component[]) => {
+        setComponents(newComponents);
+        const contentConfig = transformToContentConfig(newComponents);
+        console.log('Current Page Content:', contentConfig);
+        onChange(contentConfig);
+    };
 
     const handleSelect = (component: Component) => {
+        console.log('Selected component:', component);
         setSelectedComponent(component);
         setIsConfigOpen(true);
     };
 
     const updateComponent = (updatedComponent: Component) => {
-        setComponents(prevComponents =>
-            prevComponents.map(comp =>
-                comp.id === updatedComponent.id ? updatedComponent : comp
-            )
-        );
+        const updateComponentInTree = (components: Component[]): Component[] => {
+            return components.map(comp => {
+                if (comp.id === updatedComponent.id) {
+                    return updatedComponent;
+                }
+                if (comp.children) {
+                    return {
+                        ...comp,
+                        children: updateComponentInTree(comp.children)
+                    };
+                }
+                return comp;
+            });
+        };
+
+        const newComponents = updateComponentInTree(components);
+        console.log('Updating component:', updatedComponent);
+        console.log('New components state:', newComponents);
+        
+        setComponents(newComponents);
         setSelectedComponent(updatedComponent);
+        
+        // Notify parent of changes
+        const contentConfig = transformToContentConfig(newComponents);
+        onChange(contentConfig);
     };
 
     const removeComponent = (id: string) => {
-        setComponents(prevComponents => prevComponents.filter(comp => comp.id !== id));
+        const newComponents = components.filter(comp => {
+            // First try to remove from root level
+            if (comp.id === id) return false;
+
+            // If not found at root level, look inside containers
+            if (comp.children) {
+                comp.children = comp.children.filter(child => child.id !== id);
+            }
+            return true;
+        });
+
+        updateComponentsAndNotify(newComponents);
+
+        // Clear selection if the removed component was selected
         if (selectedComponent?.id === id) {
             setSelectedComponent(null);
             setIsConfigOpen(false);
         }
     };
 
-    const handleHeightChange = (id: string, height: number) => {
-        setComponents(prevComponents =>
-            prevComponents.map(comp =>
-                comp.id === id ? { ...comp, height } : comp
-            )
-        );
+    const handleDropInContainer = (containerId: string, item: DragItem, columnIndex: number) => {
+        // Only allow non-container components to be dropped into containers
+        if (item.isContainer) return;
+
+        if (item.source === 'sidebar') {
+            const defaultContent: Record<string, string> = {
+                h1: `New Heading ${count}`,
+                paragraph: 'New paragraph text',
+                image: 'https://placehold.co/400x400'
+            };
+
+            const dropTargetRect = dropAreaRef.current?.getBoundingClientRect();
+            const containerWidth = dropTargetRect?.width || 800;
+
+            const newComponent: Component = {
+                id: `component-${Date.now()}`,
+                type: item.componentType,
+                content: defaultContent[item.componentType] || '',
+                position: { x: 0, y: 0 },
+                height: 100,
+                width: containerWidth,
+                minWidth: containerWidth,
+                maxWidth: containerWidth,
+                zIndex: maxZIndex + 1,
+                gridColumn: columnIndex
+            };
+
+            const newComponents = components.map(comp =>
+                comp.id === containerId
+                    ? { ...comp, children: [...(comp.children || []), newComponent] }
+                    : comp
+            );
+
+            updateComponentsAndNotify(newComponents);
+            setCount(count + 1);
+            setMaxZIndex(prev => prev + 1);
+        } else if (item.source === 'canvas' && item.id) {
+            // Only allow moving non-container components between sections
+            if (item.isContainer) return;
+
+            let movedComponent: Component | undefined;
+
+            // Remove component from its current location and add to new container
+            const newComponents = components.map(comp => {
+                if (comp.children) {
+                    const childIndex = comp.children.findIndex(child => child.id === item.id);
+                    if (childIndex !== -1) {
+                        movedComponent = { ...comp.children[childIndex] };
+                        comp.children = comp.children.filter(child => child.id !== item.id);
+                    }
+                }
+                return comp;
+            });
+
+            // If component was found in a container, add it to the new container
+            if (movedComponent) {
+                const finalComponents = newComponents.map(comp =>
+                    comp.id === containerId
+                        ? {
+                            ...comp,
+                            children: [...(comp.children || []), {
+                                ...movedComponent!,
+                                gridColumn: columnIndex
+                            }]
+                        }
+                        : comp
+                );
+                updateComponentsAndNotify(finalComponents);
+            }
+
+            // If component was at root level, move it to container
+            const rootComponent = components.find(comp => comp.id === item.id);
+            if (rootComponent && !rootComponent.isContainer) {
+                const finalComponents = components
+                    .filter(comp => comp.id !== item.id)
+                    .map(comp =>
+                        comp.id === containerId
+                            ? {
+                                ...comp,
+                                children: [...(comp.children || []), {
+                                    ...rootComponent,
+                                    gridColumn: columnIndex
+                                }]
+                            }
+                            : comp
+                    );
+                updateComponentsAndNotify(finalComponents);
+            }
+        }
     };
 
-    const handleMove = (id: string, newY: number) => {
-        setComponents(prevComponents =>
-            prevComponents.map(comp =>
-                comp.id === id ? { ...comp, position: { ...comp.position, y: newY } } : comp
-            )
-        );
-    };
-
-    const [{ isOver }, dropRef] = useDrop(() => ({
+    const [{ isOver }, drop] = useDrop(() => ({
         accept: 'component',
         drop: (item: DragItem, monitor) => {
-            const offset = monitor.getClientOffset();
-            if (!offset) return;
+            const dropAreaRect = dropAreaRef.current?.getBoundingClientRect();
+            if (!dropAreaRect) return;
 
-            const x = 0;
-            const rawY = offset.y - 64;
-            const snappedY = findNearestDropZone(rawY, dropZones);
+            const clientOffset = monitor.getClientOffset();
+            if (!clientOffset) return;
 
+            // Only allow dropping non-container components from sidebar
             if (item.source === 'sidebar') {
-                // Generate a new permanent ID for the dropped component
-                const newComponent: Component = {
-                    id: `component-${Date.now()}`,
-                    type: 'h1',
-                    content: 'New Heading',
-                    position: { x, y: snappedY },
-                    height: 0,
-                };
-                setComponents(prev => [...prev, newComponent]);
-            } else if (item.source === 'canvas' && item.id) {
-                setComponents(prev =>
-                    prev.map(comp =>
-                        comp.id === item.id
-                            ? { ...comp, position: { ...comp.position, y: snappedY } }
-                            : comp
-                    )
-                );
+                const component = DRAGGABLE_COMPONENTS.find(c => c.type === item.componentType);
+                if (!component) return;
+
+                // If it's a container component, allow dropping only at root level
+                if (component.isContainer) {
+                    const newComponent: Component = {
+                        id: `component-${Date.now()}`,
+                        type: item.componentType,
+                        content: '',
+                        position: { x: 0, y: 0 },
+                        height: component.isContainer ? 200 : 100,
+                        width: dropAreaRect.width,
+                        minWidth: dropAreaRect.width,
+                        maxWidth: dropAreaRect.width,
+                        zIndex: maxZIndex + 1,
+                        isContainer: component.isContainer,
+                        columns: component.columns,
+                        children: []
+                    };
+
+                    setComponents(prev => [...prev, newComponent]);
+                    setCount(count + 1);
+                    setMaxZIndex(prev => prev + 1);
+                }
             }
         },
         collect: (monitor) => ({
             isOver: monitor.isOver()
         })
-    }), [dropZones]);
+    }), [components, count, maxZIndex]);
+
+    const combineRefs = (element: HTMLDivElement | null) => {
+        dropAreaRef.current = element;
+        drop(element);
+    };
 
     return (
-        <div className="flex h-screen">
-            <div className="w-72 border-r p-4">
-                <h2 className="font-semibold mb-4">Components</h2>
-                <ComponentDragItem />
-            </div>
-
-            <div
-                ref={dropRef as unknown as Ref<HTMLDivElement>}
-                className={`flex-1 relative overflow-auto ${isOver ? 'bg-blue-50' : ''}`}
-            >
-                <div className="w-full h-full p-16 relative">
-                    <div
-                        className="absolute inset-0"
-                        style={{
-                            backgroundImage: 'radial-gradient(#cbd5e1 1px, transparent 1px)',
-                            backgroundSize: '20px 20px'
-                        }}
-                    />
-
-                    {/* Drop zones visualization */}
-                    {dropZones.map((zone) => (
-                        <div
-                            key={zone.id}
-                            className="absolute w-full h-8 border-2 border-dashed border-blue-300 bg-blue-50 bg-opacity-50"
-                            style={{
-                                left: zone.x,
-                                top: zone.y,
-                            }}
-                        />
-                    ))}
-
-                    {/* Placed components */}
-                    {components.map((component) => (
-                        <DroppedComponent
-                            key={component.id}
-                            component={component}
-                            onSelect={handleSelect}
-                            onRemove={removeComponent}
-                            onHeightChange={handleHeightChange}
-                            onMove={(id, y) => {
-                                setComponents(prev =>
-                                    prev.map(comp =>
-                                        comp.id === id
-                                            ? { ...comp, position: { ...comp.position, y } }
-                                            : comp
-                                    )
-                                );
-                            }}
-                        />
-                    ))}
+        <>
+            <style>{resizeStyles}</style>
+            <div className="flex h-screen">
+                {/* Left Sidebar - Layouts */}
+                <div className="w-72 border-r p-4 bg-gray-50">
+                    <h2 className="font-semibold mb-4">Layouts</h2>
+                    <div className="space-y-2">
+                        <div className="text-xs text-gray-500 mb-2">Basic Layouts</div>
+                        {DRAGGABLE_COMPONENTS.filter(c =>
+                            c.isContainer &&
+                            ['container-1-1', 'container-1-2', 'container-1-3', 'container-2-3'].includes(c.type)
+                        ).map((component) => (
+                            <ComponentDragItem
+                                key={component.id}
+                                component={component}
+                            />
+                        ))}
+                        <div className="text-xs text-gray-500 mt-4 mb-2">Advanced Layouts</div>
+                        {DRAGGABLE_COMPONENTS.filter(c =>
+                            c.isContainer &&
+                            !['container-1-1', 'container-1-2', 'container-1-3', 'container-2-3'].includes(c.type)
+                        ).map((component) => (
+                            <ComponentDragItem
+                                key={component.id}
+                                component={component}
+                            />
+                        ))}
+                    </div>
                 </div>
-            </div>
 
-            <Sheet open={isConfigOpen} onOpenChange={setIsConfigOpen}>
-                <SheetContent>
-                    <SheetHeader>
-                        <SheetTitle>Heading Settings</SheetTitle>
-                    </SheetHeader>
-                    {selectedComponent && (
-                        <div className="mt-6 space-y-6">
-                            <Accordion type="single" collapsible defaultValue="content">
-                                <AccordionItem value="content">
-                                    <AccordionTrigger>Content</AccordionTrigger>
-                                    <AccordionContent>
-                                        <div className="space-y-4">
-                                            <div className="space-y-2">
-                                                <Label>Heading Text</Label>
-                                                <Input
-                                                    value={selectedComponent.content}
-                                                    onChange={(e) => updateComponent({
-                                                        ...selectedComponent,
-                                                        content: e.target.value
-                                                    })}
-                                                />
-                                            </div>
-                                        </div>
-                                    </AccordionContent>
-                                </AccordionItem>
-                            </Accordion>
+                {/* Main Content Area */}
+                <div className="flex-1 overflow-auto bg-gray-100">
+                    <div
+                        ref={combineRefs}
+                        className={`max-w-4xl mx-auto my-8 p-8 min-h-[800px] bg-white rounded-lg shadow-sm
+                            ${isOver ? 'ring-2 ring-blue-500 ring-opacity-50' : ''}`}
+                    >
+                        <div className="space-y-4">
+                            {components.map((component, index) => (
+                                <DroppedComponent
+                                    key={component.id}
+                                    component={component}
+                                    onSelect={handleSelect}
+                                    onRemove={removeComponent}
+                                    onHeightChange={(id, height, width) => {
+                                        setComponents(prev =>
+                                            prev.map(comp =>
+                                                comp.id === id
+                                                    ? { ...comp, height, width }
+                                                    : comp
+                                            )
+                                        );
+                                    }}
+                                    onMove={(id, x, y) => {
+                                        setComponents(prev =>
+                                            prev.map(comp =>
+                                                comp.id === id
+                                                    ? {
+                                                        ...comp,
+                                                        position: { x, y },
+                                                        zIndex: maxZIndex + 1
+                                                    }
+                                                    : comp
+                                            )
+                                        );
+                                        setMaxZIndex(prev => prev + 1);
+                                    }}
+                                    isLast={index === components.length - 1}
+                                    gridPosition={{ column: 1, row: index + 1 }}
+                                    onDropInContainer={handleDropInContainer}
+                                />
+                            ))}
+                            {components.length === 0 && (
+                                <div className="text-center py-12 text-gray-500 border-2 border-dashed border-gray-200 rounded-lg">
+                                    Drag and drop layouts or components here
+                                </div>
+                            )}
                         </div>
-                    )}
-                </SheetContent>
-            </Sheet>
-        </div>
+                    </div>
+                </div>
+
+                {/* Right Sidebar - Components */}
+                <div className="w-72 border-l p-4 bg-gray-50">
+                    <h2 className="font-semibold mb-4">Components</h2>
+                    <div className="space-y-2">
+                        {DRAGGABLE_COMPONENTS.filter(c => !c.isContainer).map((component) => (
+                            <ComponentDragItem
+                                key={component.id}
+                                component={component}
+                            />
+                        ))}
+                    </div>
+                </div>
+
+                {/* Settings Sheet */}
+                <Sheet open={isConfigOpen} onOpenChange={setIsConfigOpen}>
+                    <SheetContent side="right" className="w-[400px]">
+                        <SheetHeader>
+                            <SheetTitle>
+                                {selectedComponent?.type === 'h1' && 'Heading Settings'}
+                                {selectedComponent?.type === 'paragraph' && 'Paragraph Settings'}
+                                {selectedComponent?.type === 'image' && 'Image Settings'}
+                            </SheetTitle>
+                        </SheetHeader>
+                        {selectedComponent && (
+                            <div className="mt-6 space-y-6">
+                                <Accordion type="single" collapsible defaultValue="content">
+                                    <AccordionItem value="content">
+                                        <AccordionTrigger>Content</AccordionTrigger>
+                                        <AccordionContent>
+                                            <div className="space-y-4">
+                                                <div className="space-y-2">
+                                                    <Label>
+                                                        {selectedComponent.type === 'h1' && 'Heading Text'}
+                                                        {selectedComponent.type === 'paragraph' && 'Paragraph Text'}
+                                                        {selectedComponent.type === 'image' && 'Image URL'}
+                                                    </Label>
+                                                    <Input
+                                                        value={selectedComponent.content || ''}
+                                                        onChange={(e) => {
+                                                            console.log('Input change:', e.target.value);
+                                                            updateComponent({
+                                                                ...selectedComponent,
+                                                                content: e.target.value
+                                                            });
+                                                        }}
+                                                        placeholder={
+                                                            selectedComponent.type === 'h1' ? 'Enter heading text' :
+                                                            selectedComponent.type === 'paragraph' ? 'Enter paragraph text' :
+                                                            'Enter image URL'
+                                                        }
+                                                    />
+                                                </div>
+                                            </div>
+                                        </AccordionContent>
+                                    </AccordionItem>
+                                    <AccordionItem value="dimensions">
+                                        <AccordionTrigger>Dimensions</AccordionTrigger>
+                                        <AccordionContent>
+                                            <div className="space-y-4">
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    <div className="space-y-2">
+                                                        <Label>Height (px)</Label>
+                                                        <Input
+                                                            type="number"
+                                                            value={selectedComponent.height}
+                                                            onChange={(e) => updateComponent({
+                                                                ...selectedComponent,
+                                                                height: Number(e.target.value)
+                                                            })}
+                                                            min={50}
+                                                            step={10}
+                                                        />
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <Label>Width (px)</Label>
+                                                        <Input
+                                                            type="number"
+                                                            value={selectedComponent.width}
+                                                            onChange={(e) => updateComponent({
+                                                                ...selectedComponent,
+                                                                width: Number(e.target.value)
+                                                            })}
+                                                            min={50}
+                                                            step={10}
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </AccordionContent>
+                                    </AccordionItem>
+                                </Accordion>
+                            </div>
+                        )}
+                    </SheetContent>
+                </Sheet>
+            </div>
+        </>
     );
 };
 

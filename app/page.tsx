@@ -5,7 +5,6 @@ import Link from 'next/link'
 import { ArrowRight, Layers, Paintbrush, Zap } from 'lucide-react'
 import { Button } from "@/components/ui/button"
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
 
 export default function Home() {
   const features = [
@@ -13,6 +12,7 @@ export default function Home() {
     { icon: Paintbrush, title: "Customizable Designs", description: "Tailor the look and feel to match your brand." },
     { icon: Zap, title: "Rapid Development", description: "Accelerate your workflow with our intuitive tools." },
   ]
+  console.log(process.env.NEXT_PUBLIC_TEST)
 
   return (
     <div className="min-h-screen w-full bg-background text-foreground overflow-x-hidden">
