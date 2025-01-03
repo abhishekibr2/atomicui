@@ -1,9 +1,9 @@
-import { Type, Image, Type as TextIcon, LayoutGrid } from 'lucide-react';
+import { Type, Image, Type as TextIcon, LayoutGrid, Table as TableIcon } from 'lucide-react';
 import { useDrag } from 'react-dnd';
 
 export interface DraggableComponent {
     id: string;
-    type: 'h1' | 'paragraph' | 'image' | 'container-1-1' | 'container-1-2' | 'container-1-3' | 'container-2-3' | 'container-1-4' | 'container-3-1' | 'container-1-4-4' | 'container-3-4';
+    type: 'h1' | 'paragraph' | 'image' | 'container-1-1' | 'container-1-2' | 'container-1-3' | 'container-2-3' | 'container-1-4' | 'container-3-1' | 'container-1-4-4' | 'container-3-4' | 'table';
     icon: React.ReactNode;
     label: string;
     isContainer?: boolean;
@@ -92,6 +92,12 @@ export const DRAGGABLE_COMPONENTS: DraggableComponent[] = [
         type: 'image',
         icon: <Image className="w-4 h-4" />,
         label: 'Image'
+    },
+    {
+        id: 'table',
+        type: 'table',
+        icon: <TableIcon className="w-4 h-4" />,
+        label: 'Data Table'
     }
 ];
 
