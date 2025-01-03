@@ -12,7 +12,6 @@ export default function Home() {
     { icon: Paintbrush, title: "Customizable Designs", description: "Tailor the look and feel to match your brand." },
     { icon: Zap, title: "Rapid Development", description: "Accelerate your workflow with our intuitive tools." },
   ]
-  console.log(process.env.NEXT_PUBLIC_TEST)
 
   return (
     <div className="min-h-screen w-full bg-background text-foreground overflow-x-hidden">

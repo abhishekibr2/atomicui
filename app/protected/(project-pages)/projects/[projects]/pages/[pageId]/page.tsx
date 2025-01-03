@@ -64,6 +64,7 @@ export default function PageData({ params }: DetailPageProps) {
                     }
                 );
                 const externalResponse = await externalData.json();
+                console.log(externalResponse)
                 // Update to handle the nested data structure
                 setPageData(externalResponse.page.data);
             } catch (error) {
@@ -278,10 +279,22 @@ export default function PageData({ params }: DetailPageProps) {
                         <CardContent className="pt-6">
                             <h2 className="text-lg font-semibold mb-4">Page Content</h2>
                             <DndProvider backend={HTML5Backend}>
-                                <PageEditor
-                                    content={pageData.page_content || null}
-                                    onChange={(content: any) => handleInputChange('page_content', content)}
-                                />
+                                {(() => {
+                                    console.log('Page Content Data:', pageData?.page_content);
+                                    // Ensure page_content is an array
+                                    const content = Array.isArray(pageData?.page_content) 
+                                        ? pageData.page_content 
+                                        : [];
+                                    return (
+                                        <PageEditor
+                                            content={content}
+                                            onChange={(content: any) => {
+                                                console.log('Page Editor onChange:', content);
+                                                handleInputChange('page_content', content);
+                                            }}
+                                        />
+                                    );
+                                })()}
                             </DndProvider>
                         </CardContent>
                     </Card>
