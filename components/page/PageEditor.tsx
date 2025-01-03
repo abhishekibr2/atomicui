@@ -312,76 +312,96 @@ const PageEditor = ({ content, onChange }: PageEditorProps) => {
 
     // Transform components to ContentConfig format
     const transformToContentConfig = (components: Component[]): ContentConfig[] => {
-        const transformComponent = (component: Component): ContentConfig => {
-            const baseConfig = {
-                id: component.id,
-                content: component.content,
-                position: component.position,
-                height: component.height,
-                width: component.width,
-                zIndex: component.zIndex,
-                gridColumn: component.gridColumn,
-                gridRow: component.gridRow,
-            };
+        try {
+            const transformComponent = (component: Component): ContentConfig => {
+                const baseConfig = {
+                    id: component.id,
+                    content: component.content,
+                    position: component.position,
+                    height: component.height,
+                    width: component.width,
+                    zIndex: component.zIndex,
+                    gridColumn: component.gridColumn,
+                    gridRow: component.gridRow,
+                };
 
-            if (component.isContainer) {
+                if (component.isContainer) {
+                    return {
+                        type: component.type,
+                        name: `Container ${component.type}`,
+                        config: {
+                            ...baseConfig,
+                            columns: component.columns,
+                            children: component.children?.map(child => transformComponent(child)) || []
+                        }
+                    };
+                }
+
                 return {
                     type: component.type,
-                    name: `Container ${component.type}`,
-                    config: {
-                        ...baseConfig,
-                        columns: component.columns,
-                        children: component.children?.map(child => transformComponent(child)) || []
-                    }
+                    name: `${component.type.charAt(0).toUpperCase() + component.type.slice(1)} Component`,
+                    config: baseConfig
                 };
-            }
-
-            return {
-                type: component.type,
-                name: `${component.type.charAt(0).toUpperCase() + component.type.slice(1)} Component`,
-                config: baseConfig
             };
-        };
 
-        return components.map(transformComponent);
+            return components.map(transformComponent);
+        } catch (error) {
+            console.error('Error transforming components to ContentConfig:', error);
+            return [];
+        }
     };
 
     // Update components when content prop changes
     useEffect(() => {
-        if (!content || isInitialMount.current) {
-            isInitialMount.current = false;
-            return;
-        }
-
-        // Transform ContentConfig back to Component format
-        const transformToComponent = (config: ContentConfig): Component => {
-            const baseComponent = {
-                id: config.config.id || `component-${Date.now()}`,
-                type: config.type as DraggableComponent['type'],
-                content: config.config.content || '',
-                position: config.config.position || { x: 0, y: 0 },
-                height: config.config.height || 100,
-                width: config.config.width || 800,
-                zIndex: config.config.zIndex || 1,
-                gridColumn: config.config.gridColumn,
-                gridRow: config.config.gridRow,
-            };
-
-            if (config.type.startsWith('container-')) {
-                return {
-                    ...baseComponent,
-                    isContainer: true,
-                    columns: config.config.columns || [12],
-                    children: config.config.children?.map(transformToComponent) || []
-                };
+        try {
+            // Remove the initial mount check since we want to process content on first load
+            if (!content) {
+                setComponents([]);
+                return;
             }
 
-            return baseComponent;
-        };
+            // Transform ContentConfig back to Component format
+            const transformToComponent = (config: ContentConfig): Component => {
+                try {
+                    const baseComponent = {
+                        id: config.config.id || `component-${Date.now()}`,
+                        type: config.type as DraggableComponent['type'],
+                        content: config.config.content || '',
+                        position: config.config.position || { x: 0, y: 0 },
+                        height: config.config.height || 100,
+                        width: config.config.width || 800,
+                        zIndex: config.config.zIndex || 1,
+                        gridColumn: config.config.gridColumn,
+                        gridRow: config.config.gridRow,
+                    };
 
-        const newComponents = content.map(transformToComponent);
-        if (JSON.stringify(newComponents) !== JSON.stringify(components)) {
-            setComponents(newComponents);
+                    if (config.type.startsWith('container-')) {
+                        return {
+                            ...baseComponent,
+                            isContainer: true,
+                            columns: config.config.columns || [12],
+                            children: config.config.children?.map(transformToComponent) || []
+                        };
+                    }
+
+                    return baseComponent;
+                } catch (error) {
+                    console.error('Error transforming config to component:', error, config);
+                    return {} as Component;
+                }
+            };
+
+            const newComponents = content
+                .map(transformToComponent)
+                .filter((component): component is Component => component !== null);
+
+            if (JSON.stringify(newComponents) !== JSON.stringify(components)) {
+                console.log('Updating components with:', newComponents);
+                setComponents(newComponents);
+            }
+        } catch (error) {
+            console.error('Error in content effect:', error);
+            setComponents([]);
         }
     }, [content]);
 

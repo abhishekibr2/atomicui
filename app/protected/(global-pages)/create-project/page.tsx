@@ -30,7 +30,6 @@ export default function CreateProjectUI() {
             if (!response.ok) {
                 throw new Error("Failed to create project");
             }
-            console.log(response.data)
             // Reset form after submission
             setProject({ project_name: "", project_description: "", project_external_api_secret: "", project_base_api_url: "" })
             toast({
