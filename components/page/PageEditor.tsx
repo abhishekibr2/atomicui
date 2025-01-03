@@ -23,8 +23,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ContentConfig } from '@/schema/page';
 import { DRAGGABLE_COMPONENTS, ComponentDragItem, DraggableComponent } from './PageEditorComponents';
-import { ResizableBox } from 'react-resizable';
 import 'react-resizable/css/styles.css';
+import { TableComponent } from "@/components/ReusableUI/Table/Table";
+import { ReusableTableConfig } from "@/components/ReusableUI/Table/configs/User";
 
 interface Component {
     id: string;
@@ -207,6 +208,21 @@ const DroppedComponent = ({
                             src={component.content}
                             alt="Dropped image"
                             className="absolute inset-0 w-full h-full object-cover"
+                        />
+                    </div>
+                );
+            case 'table':
+                const tableConfig = component.content ? JSON.parse(component.content) : ReusableTableConfig;
+                return (
+                    <div className="w-full h-full overflow-auto">
+                        <TableComponent 
+                            config={tableConfig} 
+                            populate={{
+                                fieldName: "filters",
+                                source: "name",
+                                endpoint: "Filters"
+                            }}
+                            endpoint="Users" 
                         />
                     </div>
                 );
@@ -445,10 +461,10 @@ const PageEditor = ({ content, onChange }: PageEditorProps) => {
         const newComponents = updateComponentInTree(components);
         console.log('Updating component:', updatedComponent);
         console.log('New components state:', newComponents);
-        
+
         setComponents(newComponents);
         setSelectedComponent(updatedComponent);
-        
+
         // Notify parent of changes
         const contentConfig = transformToContentConfig(newComponents);
         onChange(contentConfig);
@@ -483,7 +499,15 @@ const PageEditor = ({ content, onChange }: PageEditorProps) => {
             const defaultContent: Record<string, string> = {
                 h1: `New Heading ${count}`,
                 paragraph: 'New paragraph text',
-                image: 'https://placehold.co/400x400'
+                image: 'https://placehold.co/400x400',
+                table: JSON.stringify(ReusableTableConfig)
+            };
+
+            const defaultHeights: Record<string, number> = {
+                h1: 100,
+                paragraph: 100,
+                image: 100,
+                table: 600  // Set a larger default height for tables
             };
 
             const dropTargetRect = dropAreaRef.current?.getBoundingClientRect();
@@ -494,7 +518,7 @@ const PageEditor = ({ content, onChange }: PageEditorProps) => {
                 type: item.componentType,
                 content: defaultContent[item.componentType] || '',
                 position: { x: 0, y: 0 },
-                height: 100,
+                height: defaultHeights[item.componentType] || 100,
                 width: containerWidth,
                 minWidth: containerWidth,
                 maxWidth: containerWidth,
@@ -742,8 +766,8 @@ const PageEditor = ({ content, onChange }: PageEditorProps) => {
                                                         }}
                                                         placeholder={
                                                             selectedComponent.type === 'h1' ? 'Enter heading text' :
-                                                            selectedComponent.type === 'paragraph' ? 'Enter paragraph text' :
-                                                            'Enter image URL'
+                                                                selectedComponent.type === 'paragraph' ? 'Enter paragraph text' :
+                                                                    'Enter image URL'
                                                         }
                                                     />
                                                 </div>
